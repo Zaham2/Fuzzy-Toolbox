@@ -123,7 +123,6 @@ public class Main {
         }
     }
 
-
     public static void main(String[] args) {
 
         Scanner sc = new Scanner(System.in);
@@ -164,7 +163,7 @@ public class Main {
 
 
         //---------------------
-        // Output var
+        // Output var : Taking input
         //---------------------
 
         FuzzyVar output = new FuzzyVar();
@@ -191,14 +190,13 @@ public class Main {
             output.getSets().add(set);
         }
 
-        printVar(vars.get(0));
-        printVar(vars.get(1));
-        printVar(vars.get(2));
+        for (FuzzyVar var : vars)
+            printVar(var);
         printVar(output);
 
 
         //----------------------
-        //Rules
+        //Rules : String manipulation
         //-----------------------
 
         int nRules = Integer.parseInt(sc.nextLine());
@@ -210,13 +208,16 @@ public class Main {
             System.out.println(s);
 
         Vector<Double> fuzzyRulesResults = new Vector<>();
+        Vector<String> afterThen = new Vector<>(); // I want each entry to have the entire rules after then
         String fuzzyOutputSet = "";
 
         for (int i = 0; i < nRules; i++) {
 
+            //We take the rule and split it
             String[] strs = rules[i].split("\\s=\\s|\\s");
             fuzzyOutputSet = strs[strs.length - 1];
 
+            //We loop over the number of conditions... the first number in the rule
             int nConditions = Integer.parseInt(strs[0]);
             double resultForThisRule = 0;
             Vector<Double> conditionValues = new Vector<>(nConditions);
@@ -224,21 +225,33 @@ public class Main {
 
 
             for (int j = 0; ; ) {
+                //First we read the FuzzyVar and teh FuzzySet from the current rule
                 String fuzzyVarToLookFor = strs[++j];
                 String fuzzySetToLookFor = strs[++j];
+                //Done reading
 
                 //This part calculates the condition's membership value
                 conditionValues.add(lookForSetMembership(vars, fuzzyVarToLookFor, fuzzySetToLookFor));
                 //We have calculated the condition's membership and added it to the conditionValues vector
 
+                //Now we determine whether the next String is an operator or " then "
                 ++j;
                 if (strs[j].equals("AND") || strs[j].equals("OR")) {
                     conditionOperators.add(strs[j]);
                 } else if (strs[j].equals("then")) {
+                    //Here we add the remaining part of the String to afterThen if we have " then "
+                    String line = "";
+                    while ((++j) < strs.length) {
+                        line += strs[j] + " ";
+                    }
+                    afterThen.add(line);
                     break;
                 }
+                //Done determining
             }
 
+
+            //Now to execute the ANDing and ORing
             int c = 0;
             for (int k = 0; k < conditionOperators.size(); k++) {
 
@@ -248,8 +261,12 @@ public class Main {
                     resultForThisRule = OR(conditionValues.get(c), conditionValues.get(++c));
             }
             fuzzyRulesResults.add(resultForThisRule);
+            //Done executing
         }
+        //Now we have read all that is before the " then " statement and calculated its value in fuzzyRulesResult
 
+
+        //This just prints the membership of each FuzzySet in vars... just to help in tracing
         System.out.println("Memberships");
         for (FuzzyVar var : vars) {
             for (FuzzySet set : var.sets) {
@@ -257,6 +274,12 @@ public class Main {
             }
         }
 
+        //This is the String that came after " then ". We have not done anything to it yet
+        System.out.println("afterThen");
+        for (String s : afterThen)
+            System.out.println(s);
+
+        //This is the membership of the part BEFORE the " then " for each rule
         System.out.println();
         System.out.println("Results of fuzzy rules");
         for (double d : fuzzyRulesResults) {
@@ -270,7 +293,7 @@ public class Main {
 
         //What am I trying to do??
         //I want to use the results from the statements before " then "
-        //1- get results from fuzzyOutputSet (one entry for each fuzzy rule... so anding and oring already complete)
+        //1- get results from fuzzyOutputResults (one entry for each fuzzy rule... so anding and oring already complete)
         //2- know which variable to set in (FuzzyVar)output
         //3- make that set equal to the corresponding fuzzyOutputSet
         //4- for each FuzzySet in output:
@@ -279,14 +302,49 @@ public class Main {
         //  4.3- multiply the xCentroid by the fuzzyMembership
         //  4.4 calculate the weighted mean using what you calculated in 4.3 --> This is the defuzzified value
 
+
+        defuzzify(nRules, afterThen, output, fuzzyRulesResults);
+
+        //Now we calculate the centroids;
+
+
     }
 
-    static class FuzzyOutputPair{
+    public static void defuzzify(int nRules, Vector<String> afterThen, FuzzyVar output, Vector<Double> fuzzyRulesResults) {
 
-        //This this helps keep track of the output FuzzyVar's sets when we assign membership
+        for (int i = 0; i < nRules; i++) {
 
-        String name;
-        double membership;
+            String currentConclusion = afterThen.get(i);
+            int numberOfConclusions = afterThen.get(i).length() / 2;
+
+            //now we iterate over the number of conclusions
+            for (int j = 0; j < numberOfConclusions; j++) {
+                String[] strs = currentConclusion.split("\\s");
+
+                //add another for loop here
+                for (int k = 0; k < strs.length; k++) {
+//                    System.out.println("hi");
+                    String fuzzyVarToLookFor = strs[k];
+                    String fuzzySetToLookFor = strs[++k];
+
+                    for (FuzzySet set : output.sets) {
+                        if (set.name.equals(fuzzySetToLookFor))
+                            set.fuzzyMembership = fuzzyRulesResults.get(i);
+                    }
+                }
+            }
+        }
+        double weightedMean = 0;
+        double weightedMeanDenominator = 0;
+        for (FuzzySet set : output.sets) {
+            weightedMeanDenominator += set.fuzzyMembership;
+            double result = (set.fuzzyMembership * calculatexCentroid(set, calculateCentroidArea(set)));
+            System.out.println("Result for output FuzzySet " + set.name + " = " + result);
+            weightedMean += result;
+        }
+
+        System.out.println("Weighted mean for " + output.name + " = " + weightedMean / weightedMeanDenominator);
+
     }
 
     private static double calculateCentroidArea(FuzzySet set) {
@@ -388,8 +446,8 @@ public class Main {
             return 0;
         }
 
-        gradient = ((y2 - y1) / (x2 - x1));
-        yIntercept = y1 - (x1 * gradient);
+        gradient = ((y2 - y1) / (x2 - x1)); //m
+        yIntercept = y1 - (x1 * gradient);  //c
 
         double membership = (gradient * crisp) + yIntercept;
         return membership;
